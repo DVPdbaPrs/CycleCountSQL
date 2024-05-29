@@ -1,0 +1,40 @@
+SELECT 
+    -- Selecting fields from DMBOM, DMREV, and DMPROD tables
+    b.bo_bomfor AS [Header Part ID],  -- Header Part ID from DMBOM table
+    b.bo_prid AS [Part Number ID],  -- Part Number ID from DMBOM table
+    b.bo_seq AS [Sequence Number],  -- Sequence Number from DMBOM table
+    b.bo_quant AS [Quantity],  -- Quantity from DMBOM table
+    b.bo_reid AS [Revision ID],  -- Revision ID from DMBOM table
+    r.re_id AS [Unique ID],  -- Unique ID from DMREV table
+    r.re_default AS [Default Flag],  -- Default Flag from DMREV table
+    r.re_prid AS [ID Part Number],  -- ID Part Number from DMREV table
+    r.re_active AS [Active Flag],  -- Active Flag from DMREV table
+    r.re_status AS [Current or history Flag],  -- Current or history Flag from DMREV table
+    p.pr_user8 AS [Item Master User Search 4],  -- Item Master User Search 4 from DMPROD table
+    p.pr_id AS [ID Unique],  -- ID Unique from DMPROD table
+    p.pr_codenum AS [Component Part # (PRID)],  -- Component Part # (PRID) from DMPROD table
+    p.pr_descrip AS [Component Part Desc. (PRID)],  -- Component Part Desc. (PRID) from DMPROD table
+    -- Calculate BOM Quantity % based on Plant Identifier
+    CASE 
+        WHEN p.pr_buid = 16 THEN bo_quant / 1000.0  -- If Plant Identifier is 16, divide Quantity by 1000
+        WHEN p.pr_buid = 17 THEN bo_quant / 100.0  -- If Plant Identifier is 17, divide Quantity by 100
+        ELSE NULL  -- Otherwise, set BOM Quantity % to NULL
+    END AS [BOM Quantity %],
+    -- Determine Plant Identifier
+    CASE 
+        WHEN p.pr_buid = 16 THEN '16'  -- If Plant Identifier is 16, set Plant Identifier to '16'
+        WHEN p.pr_buid = 17 THEN '17'  -- If Plant Identifier is 17, set Plant Identifier to '17'
+        ELSE NULL  -- Otherwise, set Plant Identifier to NULL
+    END AS [Plant Identifier],
+    -- Perform VLOOKUP to fetch Fineshied Part # (Bomfor)
+    (SELECT TOP 1 pr_codenum FROM OneSynData_test.dbo.DMPROD WHERE pr_id = b.bo_bomfor) AS [Fineshied Part # (Bomfor)],
+    -- Perform VLOOKUP to fetch Finished Part Desc. (Bomfor)
+    (SELECT TOP 1 pr_descrip FROM OneSynData_test.dbo.DMPROD WHERE pr_id = b.bo_bomfor) AS [Finished Part Desc. (Bomfor)]
+FROM OneSynData_test.dbo.DMBOM b  -- Joining DMBOM table
+JOIN OneSynData_test.dbo.DMREV r ON b.bo_reid = r.re_id  -- Joining DMREV table
+JOIN OneSynData_test.dbo.DMPROD p ON r.re_prid = p.pr_id  -- Joining DMPROD table
+WHERE r.re_default = 'true'  -- Filter by Default Flag = 'true'
+    AND r.re_active = 'true'  -- Filter by Active Flag = 'true'
+    AND r.re_status = 'C'  -- Filter by Current or history Flag = 'C'
+    AND p.pr_buid IN ('16', '17')  -- Filter by Plant Identifier 16 or 17
+    AND CASE WHEN r.re_active = 'true' THEN b.bo_bomfor ELSE NULL END IS NOT NULL;  -- Filter out inactive rows
